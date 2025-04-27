@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: mssql
+    hostname: mssql
+    environment:
+      SA_PASSWORD: "StrongPassword123!"
+      ACCEPT_EULA: "Y"
+    ports:
+      - "1433:1433"
+    volumes:
+      - mssql_data:/var/opt/mssql
+
+    networks:
+      - app-network
+
+  mssql-tools:
+    image: mcr.microsoft.com/mssql-tools
+    container_name: mssql-tools
+    depends_on:
+      - mssql
+    volumes:
+      - ./init.sql:/init.sql
+    entrypoint: >
+      bash -c "
+        sleep 40 &&
+        /opt/mssql-tools/bin/sqlcmd -S mssql -U sa -P 'StrongPassword123!' -i /init.sql
+      "
+    networks:
+      - app-network
+
+  configapi:
+    build:
+      context: ./ConfigApi
+      dockerfile: Dockerfile    
+    container_name: configapi
+    depends_on:
+      - mssql
+    environment:
+      - ASPNETCORE_URLS=http://+:5239
+      - ConnectionStrings__DefaultConnection=Server=mssql;Database=DynamicConfigDb;User Id=sa;Password=StrongPassword123!;TrustServerCertificate=true;
+      - Cors__AllowedOrigin=http://localhost:5173
+    ports:
+      - "5239:5239"
+    networks:
+      - app-network
+
+  configpanel:
+    build:
+      context: ./config-panel
+      dockerfile: Dockerfile
+    container_name: configpanel
+    depends_on:
+      - configapi
+    ports:
+      - "5173:80"
+    networks:
+      - app-network
+
+  servicebtestapp:
+    build:
+      context: ./ServiceBTestApp
+      dockerfile: Dockerfile
+    container_name: servicebtestapp
+    depends_on:
+      - mssql
+    networks:
+      - app-network
+
+networks:
+  app-network:
+
+volumes:
+  mssql_data:
